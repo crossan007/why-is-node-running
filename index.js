@@ -21,9 +21,13 @@ var hook = asyncHooks.createHook({
 hook.enable()
 module.exports = whyIsNodeRunning
 
-function whyIsNodeRunning (logger) {
-  if (!logger) logger = console
-
+/**
+ * May be called at any time to obtain a list of processes keeping Node.js running
+ * 
+ * @param {*} logger 
+ */
+function whyIsNodeRunning() {
+ 
   hook.disable()
   var activeResources = [...active.values()].filter(function(r) {
     if (
@@ -33,35 +37,22 @@ function whyIsNodeRunning (logger) {
     return true
   })
 
-  logger.error('There are %d handle(s) keeping the process running', activeResources.length)
-  for (const o of activeResources) printStacks(o)
+  return {
+    runningHandles: activeResources.length,
+    blockers: activeResources.map(ar => {
+      const filteredStacks = ar.stacks.slice(1)
+        .filter(function (s) {
+          var filename = s.getFileName()
+          return filename && filename.indexOf(sep) > -1 && filename.indexOf('internal' + sep) !== 0
+        })
 
-  function printStacks (o) {
-    var stacks = o.stacks.slice(1).filter(function (s) {
-      var filename = s.getFileName()
-      return filename && filename.indexOf(sep) > -1 && filename.indexOf('internal' + sep) !== 0
-    })
-
-    logger.error('')
-    logger.error('# %s', o.type)
-
-    if (!stacks[0]) {
-      logger.error('(unknown stack trace)')
-    } else {
-      var padding = ''
-      stacks.forEach(function (s) {
-        var pad = (s.getFileName() + ':' + s.getLineNumber()).replace(/./g, ' ')
-        if (pad.length > padding.length) padding = pad
-      })
-      stacks.forEach(function (s) {
-        var prefix = s.getFileName() + ':' + s.getLineNumber()
-        try {
-          var src = fs.readFileSync(s.getFileName(), 'utf-8').split(/\n|\r\n/)
-          logger.error(prefix + padding.slice(prefix.length) + ' - ' + src[s.getLineNumber() - 1].trim())
-        } catch (e) {
-          logger.error(prefix + padding.slice(prefix.length))
+      return {
+        type: ar.type,
+        cause: {
+          file: filteredStacks[0].getFileName(),
+          lineNumber: filteredStacks[0].getLineNumber()
         }
-      })
-    }
+       }
+    })
   }
 }
